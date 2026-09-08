@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 4, "column": 0}, "map": {"version":3,"sources":["file:///C:/Users/juant/Downloads/PulsePoint/pulsepoint/app/layout.jsx"],"sourcesContent":["import './globals.css';\nexport const metadata = { title: 'PulsePoint | Community health', description: 'Explore public health indicators and compare U.S. counties.' };\nexport default function RootLayout({ children }) {\n  return <html lang=\"en\"><body>{children}</body></html>;\n}\n"],"names":["metadata","title","description","RootLayout","children","lang"],"mappings":";;;;;;;;;AACO,MAAMA,WAAW;IAAEC,OAAO;IAAiCC,aAAa;AAA8D;AAC9H,SAASC,WAAW,EAAEC,QAAQ,EAAE;IAC7C,qBAAO,8OAAC;QAAKC,MAAK;kBAAK,cAAA,8OAAC;sBAAMD;;;;;;;;;;;AAChC"}},
+    {"offset": {"line": 41, "column": 0}, "map": {"version":3,"sources":["file:///C:/Users/juant/Downloads/PulsePoint/pulsepoint/node_modules/next/src/server/route-modules/app-page/vendored/rsc/react-jsx-dev-runtime.ts"],"sourcesContent":["module.exports = (\n  require('../../module.compiled') as typeof import('../../module.compiled')\n).vendored['react-rsc']!.ReactJsxDevRuntime\n"],"names":["module","exports","require","vendored","ReactJsxDevRuntime"],"mappings":"AAAAA,OAAOC,OAAO,GACZC,QAAQ,4HACRC,QAAQ,CAAC,YAAY,CAAEC,kBAAkB","ignoreList":[0]}}]
+}
