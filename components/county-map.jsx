@@ -41,17 +41,21 @@ function CountyMapComponent({ counties, selected, onSelect, onHover, metric }) {
   }
 
   return (
-    <div className="map-stage" onPointerLeave={() => onHover?.('', null)}>
+    <div
+      className="map-stage"
+      onPointerMove={(event) => {
+        const id = countyIdFromEvent(event);
+        if (id) onHover?.(id, event);
+        else onHover?.('', null);
+      }}
+      onPointerLeave={() => onHover?.('', null)}
+    >
       <div className="map-aura" aria-hidden="true" />
       <svg
         className="county-map"
         viewBox="0 0 975 610"
         role="img"
         aria-label="Interactive United States county health map. Search and explorer controls provide keyboard access."
-        onPointerMove={(event) => {
-          const id = countyIdFromEvent(event);
-          if (id) onHover?.(id, event);
-        }}
         onPointerLeave={() => onHover?.('', null)}
         onClick={(event) => {
           const id = countyIdFromEvent(event);

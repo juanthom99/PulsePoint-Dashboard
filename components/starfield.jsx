@@ -8,17 +8,37 @@ function seededValue(index, salt) {
 }
 
 export default function Starfield({ children }) {
-  const stars = Array.from({ length: 96 }, (_, index) => ({
-    id: index,
-    x: `${(seededValue(index, 1) * 100).toFixed(2)}%`,
-    y: `${(seededValue(index, 2) * 100).toFixed(2)}%`,
-    size: `${index % 19 === 0 ? 4 : index % 7 === 0 ? 3 : index % 3 === 0 ? 2 : 1}px`,
-    delay: `${(seededValue(index, 3) * -9).toFixed(2)}s`,
-    duration: `${(3.2 + seededValue(index, 4) * 5).toFixed(2)}s`,
-    opacity: (0.28 + seededValue(index, 5) * 0.68).toFixed(2),
-    color: COLORS[index % COLORS.length],
-    sparkle: index % 19 === 0,
-  }));
+  const stars = Array.from({ length: 144 }, (_, index) => {
+    const sparkle = index % 9 === 0;
+    let x = seededValue(index, 1) * 100;
+    let y = seededValue(index, 2) * 100;
+
+    if (sparkle) {
+      for (let attempt = 0; attempt < 24; attempt += 1) {
+        const candidateX = seededValue(index, 10 + attempt * 2) * 100;
+        const candidateY = seededValue(index, 11 + attempt * 2) * 100;
+        const overlapsMap = candidateX > 22 && candidateY > 10 && candidateY < 92;
+        if (!overlapsMap) {
+          x = candidateX;
+          y = candidateY;
+          break;
+        }
+      }
+    }
+
+    return {
+      id: index,
+      x: `${x.toFixed(2)}%`,
+      y: `${y.toFixed(2)}%`,
+      size: `${index % 19 === 0 ? 4 : index % 7 === 0 ? 3 : index % 3 === 0 ? 2 : 1}px`,
+      delay: `${(seededValue(index, 3) * -4).toFixed(2)}s`,
+      duration: `${(1.35 + seededValue(index, 4) * 2.35).toFixed(2)}s`,
+      opacity: (0.48 + seededValue(index, 5) * 0.5).toFixed(2),
+      color: COLORS[index % COLORS.length],
+      sparkle,
+      twinkling: index % 3 === 0,
+    };
+  });
 
   return (
     <div className="star-shell">
@@ -26,7 +46,7 @@ export default function Starfield({ children }) {
         {stars.map((star) => (
           <span
             key={star.id}
-            className={star.sparkle ? 'star sparkle' : 'star'}
+            className={`star${star.twinkling ? ' twinkling' : ''}${star.sparkle ? ' sparkle' : ''}`}
             style={{
               '--star-x': star.x,
               '--star-y': star.y,

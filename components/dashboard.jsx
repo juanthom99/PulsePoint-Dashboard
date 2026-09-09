@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity, ArrowRightLeft, BarChart3, Brain, Check, ChevronRight, Cigarette,
-  Compass, Droplets, FileUp, Footprints, Frown, Heart, Info, MapPin, Menu,
-  Search, ShieldOff, SlidersHorizontal, Sparkles, Users, X,
+  Droplets, FileUp, Footprints, Frown, Heart, Info, MapPin,
+  Search, ShieldOff, Sparkles, Users, X,
 } from 'lucide-react';
 import { CountyMap } from '@/components/county-map';
 import { METRICS, parseCSV, formatValue } from '@/lib/data.mjs';
@@ -75,7 +75,8 @@ export default function Dashboard() {
   const [query, setQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [state, setState] = useState('All states');
-  const [sortOrder, setSortOrder] = useState('none');
+  const [sortField, setSortField] = useState('county');
+  const [sortDirection, setSortDirection] = useState('asc');
   const [minValue, setMinValue] = useState('');
   const [maxValue, setMaxValue] = useState('');
   const [hideMissing, setHideMissing] = useState(false);
@@ -176,22 +177,30 @@ export default function Dashboard() {
       if (max != null && (row?.value == null || row.value > max)) return false;
       return true;
     });
-    if (sortOrder !== 'none') list = [...list].sort((a, b) => {
+    list = [...list].sort((a, b) => {
       const first = a.metrics[metric];
       const second = b.metrics[metric];
-      if (sortOrder.startsWith('ci-')) {
+      let comparison = 0;
+      if (sortField === 'county') comparison = a.name.localeCompare(b.name) || a.state.localeCompare(b.state);
+      else if (sortField === 'state') comparison = a.state.localeCompare(b.state) || a.name.localeCompare(b.name);
+      else if (sortField === 'fips') comparison = a.id.localeCompare(b.id);
+      else if (sortField === 'ci-width') {
         const aWidth = first?.low != null && first?.high != null ? first.high - first.low : null;
         const bWidth = second?.low != null && second?.high != null ? second.high - second.low : null;
-        if (aWidth == null) return 1;
-        if (bWidth == null) return -1;
-        return sortOrder === 'ci-widest' ? bWidth - aWidth : aWidth - bWidth;
+        if (aWidth == null && bWidth == null) comparison = 0;
+        else if (aWidth == null) return 1;
+        else if (bWidth == null) return -1;
+        else comparison = aWidth - bWidth;
+      } else {
+        if (first?.value == null && second?.value == null) comparison = 0;
+        else if (first?.value == null) return 1;
+        else if (second?.value == null) return -1;
+        else comparison = first.value - second.value;
       }
-      if (first?.value == null) return 1;
-      if (second?.value == null) return -1;
-      return sortOrder === 'highest' ? second.value - first.value : first.value - second.value;
+      return sortDirection === 'desc' ? -comparison : comparison;
     });
     return list;
-  }, [counties, state, query, metric, hideMissing, minValue, maxValue, sortOrder]);
+  }, [counties, state, query, metric, hideMissing, minValue, maxValue, sortField, sortDirection]);
 
   const searchMatches = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -226,7 +235,6 @@ export default function Dashboard() {
   }, []);
 
   const navItems = [
-    [Compass, 'Explore', 'explore'],
     [ArrowRightLeft, 'Compare', 'compare'],
     [Info, 'About data', 'data'],
   ];
@@ -259,8 +267,19 @@ export default function Dashboard() {
             </div>
           )}
         </div>
-        <div className={`source-pill ${sample ? 'sample' : ''}`}><span />{busy ? 'Loading universe' : sample ? 'Sample data' : `${filtered.length.toLocaleString()} counties`}</div>
-        <button className="mobile-menu icon-button" aria-label="Open explorer" onClick={() => setDrawer('explore')}><Menu /></button>
+        <button
+          className={`source-pill ${sample ? 'sample' : ''}`}
+          onClick={() => setDrawer('explore')}
+          aria-label={`Show the ${filtered.length.toLocaleString()} counties highlighted on the map`}
+          aria-expanded={drawer === 'explore'}
+          disabled={busy}
+        >
+          <span className="source-dot" />
+          <span className="source-label">
+            {busy ? 'Loading' : <><strong>{filtered.length.toLocaleString()}</strong><span className="source-word">{sample ? ' sample counties' : ' counties'}</span></>}
+          </span>
+          <ChevronRight />
+        </button>
       </header>
 
       <section className="map-experience" aria-label="County health explorer">
@@ -317,12 +336,15 @@ export default function Dashboard() {
       <Drawer open={drawer === 'explore'} title="Explore counties" eyebrow={`${filtered.length.toLocaleString()} matches`} onClose={() => setDrawer('')} wide>
         <div className="filter-grid">
           <label className="field field-wide"><span>Search</span><div className="input-with-icon"><Search /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="County, state, or FIPS" /></div></label>
+          <label className="field field-wide"><span>Health indicator</span><select value={metric} onChange={(event) => setMetric(event.target.value)}>{Object.entries(METRICS).map(([code, name]) => <option value={code} key={code}>{name}</option>)}</select></label>
           <label className="field"><span>State</span><select value={state} onChange={(event) => setState(event.target.value)}><option>All states</option>{states.map((item) => <option key={item}>{item}</option>)}</select></label>
-          <label className="field"><span>Sort</span><select value={sortOrder} onChange={(event) => setSortOrder(event.target.value)}><option value="none">County name</option><option value="highest">Highest value</option><option value="lowest">Lowest value</option><option value="ci-widest">Widest interval</option><option value="ci-narrowest">Narrowest interval</option></select></label>
+          <label className="field"><span>Sort by</span><select value={sortField} onChange={(event) => setSortField(event.target.value)}><option value="county">County name</option><option value="state">State</option><option value="fips">County FIPS</option><option value="value">Indicator value</option><option value="ci-width">Confidence interval width</option></select></label>
+          <label className="field"><span>Sort direction</span><select value={sortDirection} onChange={(event) => setSortDirection(event.target.value)}><option value="asc">Ascending / lowest first</option><option value="desc">Descending / highest first</option></select></label>
           <label className="field"><span>Minimum %</span><input type="number" min="0" max="100" value={minValue} onChange={(event) => setMinValue(event.target.value)} placeholder="0" /></label>
           <label className="field"><span>Maximum %</span><input type="number" min="0" max="100" value={maxValue} onChange={(event) => setMaxValue(event.target.value)} placeholder="100" /></label>
           <label className="check-field"><input type="checkbox" checked={hideMissing} onChange={(event) => setHideMissing(event.target.checked)} /><span className="fake-check">{hideMissing && <Check />}</span>Hide missing data</label>
         </div>
+        <div className="explorer-context"><span>Results show</span><strong>{METRICS[metric]}</strong></div>
         <div className="county-results">
           {filtered.slice(0, 150).map((item) => <button key={item.id} onClick={() => selectCounty(item.id)}><span><strong>{item.name}</strong><small>{item.state} · {item.id}</small></span><span className="result-value">{formatValue(item.metrics[metric]?.value)}</span><ChevronRight /></button>)}
           {!filtered.length && <p className="empty-state">No counties match these filters.</p>}
@@ -356,7 +378,6 @@ export default function Dashboard() {
       </Drawer>
 
       <input ref={fileInput} hidden type="file" accept=".csv,text/csv" onChange={upload} />
-      <button className="filter-fab" onClick={() => setDrawer('explore')} aria-label="Open filters"><SlidersHorizontal />{(state !== 'All states' || minValue || maxValue || hideMissing) && <span />}</button>
       {!busy && !error && !counties.length && <div className="center-message" role="status"><BarChart3 /><p>No observations match this year and estimate type.</p></div>}
     </main>
   );
