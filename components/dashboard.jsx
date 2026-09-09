@@ -1,136 +1,363 @@
 'use client';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, House, Map as MapIcon, ChartNoAxesCombined, Info, Search, Users, Droplets, Footprints, Brain, Heart, Cigarette, Frown, ShieldOff, Upload, MapPin, ArrowUpRight } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Activity, ArrowRightLeft, BarChart3, Brain, Check, ChevronRight, Cigarette,
+  Compass, Droplets, FileUp, Footprints, Frown, Heart, Info, MapPin, Menu,
+  Search, ShieldOff, SlidersHorizontal, Sparkles, Users, X,
+} from 'lucide-react';
 import { CountyMap } from '@/components/county-map';
 import { METRICS, parseCSV, formatValue } from '@/lib/data.mjs';
+import { clampFloatingPanel } from '@/lib/map-utils.mjs';
 
-const primary = ['OBESITY','DIABETES','LPA','MHLTH','BPHIGH','CSMOKING','DEPRESSION','ACCESS2'];
-const icons = [Users,Droplets,Footprints,Brain,Heart,Cigarette,Frown,ShieldOff];
+const PRIMARY = ['OBESITY', 'DIABETES', 'LPA', 'MHLTH', 'BPHIGH', 'CSMOKING', 'DEPRESSION', 'ACCESS2'];
+const ICONS = { OBESITY: Users, DIABETES: Droplets, LPA: Footprints, MHLTH: Brain, BPHIGH: Heart, CSMOKING: Cigarette, DEPRESSION: Frown, ACCESS2: ShieldOff };
 const STATE_NAMES = {AL:'Alabama',AK:'Alaska',AZ:'Arizona',AR:'Arkansas',CA:'California',CO:'Colorado',CT:'Connecticut',DE:'Delaware',DC:'District of Columbia',FL:'Florida',GA:'Georgia',HI:'Hawaii',ID:'Idaho',IL:'Illinois',IN:'Indiana',IA:'Iowa',KS:'Kansas',KY:'Kentucky',LA:'Louisiana',ME:'Maine',MD:'Maryland',MA:'Massachusetts',MI:'Michigan',MN:'Minnesota',MS:'Mississippi',MO:'Missouri',MT:'Montana',NE:'Nebraska',NV:'Nevada',NH:'New Hampshire',NJ:'New Jersey',NM:'New Mexico',NY:'New York',NC:'North Carolina',ND:'North Dakota',OH:'Ohio',OK:'Oklahoma',OR:'Oregon',PA:'Pennsylvania',RI:'Rhode Island',SC:'South Carolina',SD:'South Dakota',TN:'Tennessee',TX:'Texas',UT:'Utah',VT:'Vermont',VA:'Virginia',WA:'Washington',WV:'West Virginia',WI:'Wisconsin',WY:'Wyoming'};
-const SECTION_IDS = ['overview','explore','compare','about'];
+
+function confidence(row) {
+  return row?.low != null && row?.high != null ? `${row.low}–${row.high}%` : 'Interval unavailable';
+}
+
+function Drawer({ open, title, eyebrow, onClose, children, wide = false }) {
+  if (!open) return null;
+  return (
+    <div className="drawer-layer">
+      <button className="drawer-scrim" aria-label="Close panel" onClick={onClose} />
+      <aside className={`drawer ${wide ? 'drawer-wide' : ''}`} role="dialog" aria-modal="true" aria-label={title}>
+        <header className="drawer-header">
+          <div><p className="drawer-eyebrow">{eyebrow}</p><h2>{title}</h2></div>
+          <button className="icon-button" onClick={onClose} aria-label="Close panel" autoFocus><X /></button>
+        </header>
+        <div className="drawer-body">{children}</div>
+      </aside>
+    </div>
+  );
+}
+
+function CountyPicker({ label, value, counties, onChange }) {
+  return (
+    <label className="field">
+      <span>{label}</span>
+      <select value={value || ''} onChange={(event) => onChange(event.target.value)} disabled={!counties.length}>
+        {counties.map((county) => <option value={county.id} key={county.id}>{county.name}, {county.state}</option>)}
+      </select>
+    </label>
+  );
+}
+
+function MetricRows({ county, compact = false }) {
+  return (
+    <div className={compact ? 'metric-mini-grid' : 'detail-metrics'}>
+      {PRIMARY.map((code) => {
+        const Icon = ICONS[code];
+        const row = county?.metrics[code];
+        return (
+          <div className={compact ? 'metric-mini' : 'detail-metric'} key={code}>
+            <Icon aria-hidden="true" />
+            <div><span>{METRICS[code]}</span><strong>{formatValue(row?.value)}</strong>{!compact && <small>{confidence(row)}</small>}</div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function Dashboard() {
-  const [rows,setRows]=useState([]), [error,setError]=useState(''), [busy,setBusy]=useState(true);
-  const [source,setSource]=useState(''), [year,setYear]=useState(''), [type,setType]=useState('Crude prevalence');
-  const [metric,setMetric]=useState('OBESITY'), [county,setCounty]=useState('45019'), [other,setOther]=useState('37183');
-  const [search,setSearch]=useState(''), [state,setState]=useState('All states');
-  const [sortOrder,setSortOrder]=useState('none'), [minValue,setMinValue]=useState(''), [maxValue,setMaxValue]=useState(''), [hideMissing,setHideMissing]=useState(false), [exploreMetric,setExploreMetric]=useState('OBESITY');
-  const [searchOpen,setSearchOpen]=useState(false), [activeSection,setActiveSection]=useState('overview');
-  const fileInput=useRef(null);
-  function accept(data,label) {
+  const [rows, setRows] = useState([]);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(true);
+  const [source, setSource] = useState('');
+  const [year, setYear] = useState('');
+  const [type, setType] = useState('Crude prevalence');
+  const [metric, setMetric] = useState('OBESITY');
+  const [county, setCounty] = useState('45019');
+  const [other, setOther] = useState('37183');
+  const [query, setQuery] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [state, setState] = useState('All states');
+  const [sortOrder, setSortOrder] = useState('none');
+  const [minValue, setMinValue] = useState('');
+  const [maxValue, setMaxValue] = useState('');
+  const [hideMissing, setHideMissing] = useState(false);
+  const [drawer, setDrawer] = useState('');
+  const [hoverCard, setHoverCard] = useState(null);
+  const hoverId = useRef('');
+  const fileInput = useRef(null);
+
+  function accept(data, label) {
     if (!data.length) throw new Error('The data source is empty. Import county observations first.');
-    setRows(data); setSource(label); setYear(String(data.reduce((latest,r)=>Math.max(latest,r.year),0)));
-    setType(data.some(r=>r.data_value_type==='Crude prevalence')?'Crude prevalence':data[0].data_value_type);
-    setError(''); setState('All states'); setSearch('');
+    setRows(data);
+    setSource(label);
+    setYear(String(data.reduce((latest, row) => Math.max(latest, row.year), 0)));
+    setType(data.some((row) => row.data_value_type === 'Crude prevalence') ? 'Crude prevalence' : data[0].data_value_type);
+    setError('');
+    setState('All states');
+    setQuery('');
   }
-  useEffect(()=>{
-    let active=true;
+
+  useEffect(() => {
+    let active = true;
     async function load() {
       try {
-        const url=process.env.NEXT_PUBLIC_SUPABASE_URL, key=process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-        if (Boolean(url)!==Boolean(key)) throw new Error('Set both Supabase environment variables, or leave both blank to use CSV.');
+        const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+        if (Boolean(url) !== Boolean(key)) throw new Error('Set both Supabase environment variables, or leave both blank to use CSV.');
         if (url && key) {
-          const {createClient}=await import('@supabase/supabase-js');
-          const db=createClient(url,key); const all=[];
-          for(let start=0;;start+=1000) {
-            const {data,error}=await db.from('pulsepoint_observations').select('*').order('county_fips').order('measure_code').order('year').order('data_value_type').range(start,start+999);
-            if(error) throw new Error('Supabase could not load data. Check the schema, public SELECT policy and publishable key.');
-            all.push(...data); if(data.length<1000) break;
+          const { createClient } = await import('@supabase/supabase-js');
+          const db = createClient(url, key);
+          const all = [];
+          for (let start = 0; ; start += 1000) {
+            const { data, error: dbError } = await db.from('pulsepoint_observations').select('*').order('county_fips').order('measure_code').order('year').order('data_value_type').range(start, start + 999);
+            if (dbError) throw new Error('Supabase could not load data. Check the schema, public SELECT policy and publishable key.');
+            all.push(...data);
+            if (data.length < 1000) break;
           }
-          if(active) accept(all,'Supabase');
+          if (active) accept(all, 'Supabase');
         } else {
-          const response=await fetch('/data/places.csv');
-          if(!response.ok) throw new Error('Could not find public/data/places.csv.');
-          const data=parseCSV(await response.text()); if(active) accept(data,'Local CSV');
+          const response = await fetch('/data/places.csv');
+          if (!response.ok) throw new Error('Could not find public/data/places.csv.');
+          const data = parseCSV(await response.text());
+          if (active) accept(data, 'Local CSV');
         }
-      } catch(e) {if(active) setError(e.message);} finally {if(active) setBusy(false);}
+      } catch (loadError) {
+        if (active) setError(loadError.message);
+      } finally {
+        if (active) setBusy(false);
+      }
     }
-    load(); return ()=>{active=false;};
-  },[]);
+    load();
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    function closeOnEscape(event) {
+      if (event.key === 'Escape') {
+        setDrawer('');
+        setHoverCard(null);
+      }
+    }
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, []);
+
   async function upload(event) {
-    const file=event.target.files?.[0]; if(!file) return;
+    const file = event.target.files?.[0];
+    if (!file) return;
     setBusy(true);
-    try {accept(parseCSV(await file.text()),file.name);} catch(e){setError(e.message);} finally{setBusy(false);event.target.value='';}
+    try { accept(parseCSV(await file.text()), file.name); }
+    catch (uploadError) { setError(uploadError.message); }
+    finally { setBusy(false); event.target.value = ''; }
   }
-  const years=useMemo(()=>[...new Set(rows.map(r=>String(r.year)))].sort().reverse(),[rows]);
-  const types=useMemo(()=>[...new Set(rows.map(r=>r.data_value_type))],[rows]);
-  const counties=useMemo(()=>{
-    const result=new Map();
-    for(const r of rows) {
-      if(String(r.year)!==year || r.data_value_type!==type) continue;
-      if(!result.has(r.county_fips)) result.set(r.county_fips,{id:r.county_fips,name:r.county_name,state:r.state_abbr,metrics:{}});
-      result.get(r.county_fips).metrics[r.measure_code]=r;
+
+  const years = useMemo(() => [...new Set(rows.map((row) => String(row.year)))].sort().reverse(), [rows]);
+  const types = useMemo(() => [...new Set(rows.map((row) => row.data_value_type))], [rows]);
+  const counties = useMemo(() => {
+    const result = new Map();
+    for (const row of rows) {
+      if (String(row.year) !== year || row.data_value_type !== type) continue;
+      if (!result.has(row.county_fips)) result.set(row.county_fips, { id: row.county_fips, name: row.county_name, state: row.state_abbr, metrics: {} });
+      result.get(row.county_fips).metrics[row.measure_code] = row;
     }
-    return [...result.values()].sort((a,b)=>a.name.localeCompare(b.name));
-  },[rows,year,type]);
-  const selected=counties.find(c=>c.id===county)||counties[0];
-  const compare=counties.find(c=>c.id===other)||counties.find(c=>c.id!==selected?.id)||counties[0];
-  const states=[...new Set(counties.map(c=>c.state))].sort();
-  const filtered=useMemo(()=>{
-    const min=minValue===''?null:Number(minValue), max=maxValue===''?null:Number(maxValue);
-    let list=counties.filter(c=>{
-      if(state!=='All states'&&c.state!==state) return false;
-      if(!`${c.name} ${c.state} ${STATE_NAMES[c.state]||''}`.toLowerCase().includes(search.toLowerCase())) return false;
-      const row=c.metrics[exploreMetric];
-      if(hideMissing&&row?.value==null) return false;
-      if(min!=null&&(row?.value==null||row.value<min)) return false;
-      if(max!=null&&(row?.value==null||row.value>max)) return false;
+    return [...result.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [rows, year, type]);
+
+  const selected = counties.find((item) => item.id === county) || counties[0];
+  const compared = counties.find((item) => item.id === other) || counties.find((item) => item.id !== selected?.id) || counties[0];
+  const states = [...new Set(counties.map((item) => item.state))].sort();
+  const filtered = useMemo(() => {
+    const min = minValue === '' ? null : Number(minValue);
+    const max = maxValue === '' ? null : Number(maxValue);
+    let list = counties.filter((item) => {
+      if (state !== 'All states' && item.state !== state) return false;
+      if (query && !`${item.name} ${item.state} ${STATE_NAMES[item.state] || ''} ${item.id}`.toLowerCase().includes(query.toLowerCase())) return false;
+      const row = item.metrics[metric];
+      if (hideMissing && row?.value == null) return false;
+      if (min != null && (row?.value == null || row.value < min)) return false;
+      if (max != null && (row?.value == null || row.value > max)) return false;
       return true;
     });
-    if(sortOrder!=='none') list=[...list].sort((a,b)=>{
-      const ra=a.metrics[exploreMetric], rb=b.metrics[exploreMetric];
-      if(sortOrder==='ci-widest'||sortOrder==='ci-narrowest') {
-        const wa=ra?.low!=null&&ra?.high!=null?ra.high-ra.low:null;
-        const wb=rb?.low!=null&&rb?.high!=null?rb.high-rb.low:null;
-        if(wa==null&&wb==null) return 0;
-        if(wa==null) return 1;
-        if(wb==null) return -1;
-        return sortOrder==='ci-widest'?wb-wa:wa-wb;
+    if (sortOrder !== 'none') list = [...list].sort((a, b) => {
+      const first = a.metrics[metric];
+      const second = b.metrics[metric];
+      if (sortOrder.startsWith('ci-')) {
+        const aWidth = first?.low != null && first?.high != null ? first.high - first.low : null;
+        const bWidth = second?.low != null && second?.high != null ? second.high - second.low : null;
+        if (aWidth == null) return 1;
+        if (bWidth == null) return -1;
+        return sortOrder === 'ci-widest' ? bWidth - aWidth : aWidth - bWidth;
       }
-      const va=ra?.value, vb=rb?.value;
-      if(va==null&&vb==null) return 0;
-      if(va==null) return 1;
-      if(vb==null) return -1;
-      return sortOrder==='highest'?vb-va:va-vb;
+      if (first?.value == null) return 1;
+      if (second?.value == null) return -1;
+      return sortOrder === 'highest' ? second.value - first.value : first.value - second.value;
     });
     return list;
-  },[counties,state,search,exploreMetric,sortOrder,minValue,maxValue,hideMissing]);
-  const searchMatches=useMemo(()=>{
-    const q=search.trim().toLowerCase();
-    if(!q) return [];
-    return counties.filter(c=>`${c.name} ${c.state} ${STATE_NAMES[c.state]||''}`.toLowerCase().includes(q)).slice(0,8);
-  },[search,counties]);
-  useEffect(()=>{
-    const sections=SECTION_IDS.map(id=>document.getElementById(id)).filter(Boolean);
-    if(!sections.length) return;
-    const observer=new IntersectionObserver(entries=>{
-      const visible=entries.filter(e=>e.isIntersecting).sort((a,b)=>b.intersectionRatio-a.intersectionRatio);
-      if(visible[0]) setActiveSection(visible[0].target.id);
-    },{rootMargin:'-15% 0px -70% 0px',threshold:[0,0.25,0.5,0.75,1]});
-    sections.forEach(s=>observer.observe(s));
-    return ()=>observer.disconnect();
-  },[busy]);
-  const sample=rows.some(r=>r.is_sample);
-  function CountySelect({label,value,onChange}) {return <label className="county-picker"><span>{label}</span><select value={value||''} onChange={e=>onChange(e.target.value)} disabled={!counties.length}>{counties.map(c=><option value={c.id} key={c.id}>{c.name}, {c.state}</option>)}</select></label>;}
-  return <div className="app-shell">
-    <aside className="sidebar"><a className="brand" href="#overview"><Activity size={36}/><span>PulsePoint</span></a><p className="brand-caption">People. Places. Health.</p>
-      <nav aria-label="Main navigation">{[[House,'Overview','overview'],[MapIcon,'Explore counties','explore'],[ChartNoAxesCombined,'Compare','compare'],[Info,'About the data','about']].map(([Icon,label,id])=><a key={id} href={`#${id}`} className={activeSection===id?'active':''} aria-current={activeSection===id?'page':undefined}><Icon size={20}/>{label}</a>)}</nav>
-      <div className="sidebar-note"><Activity/><p>Understanding begins<br/>with a closer look.</p></div>
-    </aside>
-    <main id="overview">
-      <header className="topbar"><label className="search"><Search size={20}/><input aria-label="Search counties or states" placeholder="Search a county or state" value={search} onChange={e=>{setSearch(e.target.value);setSearchOpen(true);}} onFocus={()=>setSearchOpen(true)} onBlur={()=>setTimeout(()=>setSearchOpen(false),150)}/>{searchOpen&&searchMatches.length>0&&<div className="search-results">{searchMatches.map(c=><button key={c.id} onMouseDown={()=>{setCounty(c.id);setSearch('');setSearchOpen(false);}}>{c.name}, {c.state}</button>)}</div>}</label><span className={`status ${sample?'sample':''}`}>{busy?'Loading data':sample?'Sample data':'County estimates'}</span></header>
-      <div className="intro"><div><p className="eyebrow">COMMUNITY HEALTH EXPLORER</p><h1>Understand the health of your community</h1><p>Explore patterns. Compare counties. Ask better questions.</p></div><Activity className="hero-pulse" aria-hidden="true"/></div>
-      <div className="toolbar"><CountySelect label="Selected county" value={selected?.id} onChange={setCounty}/><label>Observation year<select value={year} onChange={e=>setYear(e.target.value)}>{years.map(y=><option key={y}>{y}</option>)}</select></label><label>Estimate type<select value={type} onChange={e=>setType(e.target.value)}>{types.map(t=><option key={t}>{t}</option>)}</select></label><button className="upload" onClick={()=>fileInput.current?.click()} disabled={busy}><Upload size={16}/>Open CSV</button><input ref={fileInput} hidden type="file" accept=".csv,text/csv" onChange={upload}/></div>
-      {error&&<div role="alert" className="error">{error}</div>}
-      {sample&&<p className="sample-note">Design sample: all displayed values and intervals are fictional. Open your CDC CSV to explore real estimates.</p>}
-      {!busy&&!error&&!counties.length&&<p role="status">No observations match this year and estimate type. Choose another combination.</p>}
-      <section className="kpis" aria-label="Selected county health indicators">{primary.map((code,i)=>{const Icon=icons[i], row=selected?.metrics[code]; return <Card key={code} className={`metric ${i%2?'violet':''}`}><CardContent><Icon size={25}/><div><p>{METRICS[code]}</p><strong>{formatValue(row?.value)}</strong><small>{row?.value!=null?'Estimated adult prevalence':'No estimate for this selection'}</small></div></CardContent></Card>;})}</section>
-      <div className="main-grid"><Card className="map-panel"><CardHeader><div><CardTitle><MapIcon/>Explore community health</CardTitle><p>Choose an indicator, then select a colored county.</p></div><label>Indicator<select value={metric} onChange={e=>setMetric(e.target.value)}>{Object.entries(METRICS).map(([code,name])=><option value={code} key={code}>{name}</option>)}</select></label></CardHeader><CardContent><CountyMap counties={filtered} selected={selected?.id} onSelect={setCounty} metric={metric}/></CardContent></Card>
-      <Card className="snapshot"><CardHeader><CardTitle><MapPin/>County snapshot</CardTitle></CardHeader><CardContent><h2>{selected?`${selected.name}, ${selected.state}`:'Select a county'}</h2><p className="muted">{year} observation · {type}</p><div className="snapshot-meta"><div><small>County FIPS</small><strong>{selected?.id||'—'}</strong></div><a className="button" href="#compare">Compare county <ArrowUpRight size={16}/></a></div><hr/>{Object.entries(METRICS).map(([code,name])=><div className="stat-row" key={code}><span>{name}</span><strong>{formatValue(selected?.metrics[code]?.value)}</strong></div>)}</CardContent></Card></div>
-      <Card id="explore" className="explorer"><CardHeader><div><CardTitle><Search/>Explore counties</CardTitle><p>{filtered.length.toLocaleString()} counties match your filters. Select a name to update the dashboard.</p></div></CardHeader><CardContent><div className="explorer-filters"><label>Indicator<select value={exploreMetric} onChange={e=>setExploreMetric(e.target.value)}>{Object.entries(METRICS).map(([code,name])=><option value={code} key={code}>{name}</option>)}</select></label><label>State<select value={state} onChange={e=>setState(e.target.value)}><option>All states</option>{states.map(s=><option key={s}>{s}</option>)}</select></label><label>Sort by<select value={sortOrder} onChange={e=>setSortOrder(e.target.value)}><option value="none">Unsorted</option><option value="highest">Highest value first</option><option value="lowest">Lowest value first</option><option value="ci-widest">Widest confidence interval first</option><option value="ci-narrowest">Narrowest confidence interval first</option></select></label><label>Min %<input type="number" min="0" max="100" placeholder="0" value={minValue} onChange={e=>setMinValue(e.target.value)}/></label><label>Max %<input type="number" min="0" max="100" placeholder="100" value={maxValue} onChange={e=>setMaxValue(e.target.value)}/></label><label className="checkbox-label"><input type="checkbox" checked={hideMissing} onChange={e=>setHideMissing(e.target.checked)}/>Hide missing data</label></div><div className="table-scroll"><table><thead><tr><th>County</th><th>State</th><th>{METRICS[exploreMetric]}</th><th>95% confidence interval</th></tr></thead><tbody>{filtered.slice(0,100).map(c=><tr key={c.id}><td><button className="text-button" onClick={()=>{setCounty(c.id);document.getElementById('overview').scrollIntoView();}}>{c.name}</button></td><td>{c.state}</td><td>{formatValue(c.metrics[exploreMetric]?.value)}</td><td>{c.metrics[exploreMetric]?.low!=null&&c.metrics[exploreMetric]?.high!=null?`${c.metrics[exploreMetric].low}–${c.metrics[exploreMetric].high}%`:'Unavailable'}</td></tr>)}</tbody></table></div>{filtered.length===0&&<p>No matching counties. Try different filters.</p>}{filtered.length>100&&<p className="muted">Showing the first 100 matches. Narrow your filters to find more counties.</p>}</CardContent></Card>
-      <Card id="compare" className="comparison"><CardHeader><div><CardTitle><ChartNoAxesCombined/>Compare communities</CardTitle><p>Matching observation year and estimate type. Bars share a 0–100% scale.</p></div></CardHeader><CardContent><div className="compare-selects"><CountySelect label="County A · Cyan" value={selected?.id} onChange={setCounty}/><CountySelect label="County B · Violet" value={compare?.id} onChange={setOther}/></div>{primary.map(code=><div className="comparison-row" key={code}><span>{METRICS[code]}</span>{[selected,compare].map((c,i)=>{const r=c?.metrics[code];return <div className={`bar-cell ${i?'violet':''}`} key={i}><strong>{formatValue(r?.value)}</strong><div className="bar-track" role="img" aria-label={`${c?.name||'County'} ${METRICS[code]} ${formatValue(r?.value)}`}><div style={{width:`${r?.value??0}%`}}/></div><small>{r?.low!=null&&r?.high!=null?`95% CI: ${r.low}–${r.high}%`:'Interval unavailable'}</small></div>;})}</div>)}</CardContent></Card>
-      <Card id="about" className="about"><CardHeader><CardTitle><Info/>About the data</CardTitle></CardHeader><CardContent><p>{sample?'The bundled sample contains invented values for six counties and is only for demonstrating the interface.':'The dashboard displays the observations provided in your file or Supabase table.'} Source loaded: {source||'none'}.</p><p>CDC PLACES provides modeled estimates, not individual medical records. Observation years can differ from release years. Crude prevalence reflects the population as observed; age adjusted prevalence supports comparisons accounting for age differences. Keep the same estimate type when comparing counties. Missing data is never treated as zero.</p><p>Confidence intervals communicate estimation uncertainty. Similar or overlapping estimates should not be treated as proof of a meaningful difference. No overall health score or national average is calculated.</p><p>Kentucky and Pennsylvania are missing from this release for measures based on 2023 BRFSS data (including obesity, diabetes, high blood pressure, physical inactivity, smoking, depression, mental distress and health insurance), per CDC's own release notes. Individual low-population counties elsewhere may also show no data where the underlying survey didn't collect enough responses for a reliable estimate. These gaps come from the source data, not from this dashboard.</p><a href="https://data.cdc.gov/500-Cities-Places/PLACES-Local-Data-for-Better-Health-County-Data-20/swc5-untb" target="_blank" rel="noreferrer">CDC PLACES county dataset ↗</a><p className="muted">Map boundaries: us-atlas, derived from U.S. Census cartographic boundaries. Boundary vintages may differ from your dataset; the table includes every imported county even when a map boundary is absent.</p></CardContent></Card>
-      <footer>PulsePoint · Community health, made clearer <span>{sample?'Illustrative sample data':'Source years shown with estimates'}</span></footer>
+  }, [counties, state, query, metric, hideMissing, minValue, maxValue, sortOrder]);
+
+  const searchMatches = useMemo(() => {
+    const normalized = query.trim().toLowerCase();
+    if (!normalized) return [];
+    return counties.filter((item) => `${item.name} ${item.state} ${STATE_NAMES[item.state] || ''} ${item.id}`.toLowerCase().includes(normalized)).slice(0, 8);
+  }, [query, counties]);
+
+  const range = filtered.map((item) => item.metrics[metric]?.value).filter((value) => value != null);
+  const low = range.length ? Math.min(...range) : null;
+  const high = range.length ? Math.max(...range) : null;
+  const sample = rows.some((row) => row.is_sample);
+  const hoveredCounty = hoverCard ? counties.find((item) => item.id === hoverCard.id) : null;
+
+  const selectCounty = useCallback((id, nextDrawer = 'details') => {
+    setCounty(id);
+    setDrawer(nextDrawer);
+    setHoverCard(null);
+    hoverId.current = '';
+  }, []);
+
+  const handleHover = useCallback((id, event) => {
+    if (!id || !event) {
+      if (!hoverId.current) return;
+      hoverId.current = '';
+      setHoverCard(null);
+      return;
+    }
+    if (hoverId.current === id) return;
+    hoverId.current = id;
+    const position = clampFloatingPanel(event.clientX, event.clientY, window.innerWidth, window.innerHeight);
+    setHoverCard({ id, ...position });
+  }, []);
+
+  const navItems = [
+    [Compass, 'Explore', 'explore'],
+    [ArrowRightLeft, 'Compare', 'compare'],
+    [Info, 'About data', 'data'],
+  ];
+
+  return (
+    <main className="experience-shell">
+      <header className="floating-header">
+        <button className="brand-lockup" onClick={() => setDrawer('')} aria-label="PulsePoint home">
+          <span className="brand-mark"><Activity /></span>
+          <span><strong>PulsePoint</strong><small>People. Places. Health.</small></span>
+        </button>
+        <div className="global-search">
+          <Search aria-hidden="true" />
+          <input
+            aria-label="Search county, state, or FIPS"
+            placeholder="Find a county, state, or FIPS"
+            value={query}
+            onChange={(event) => { setQuery(event.target.value); setSearchOpen(true); }}
+            onFocus={() => setSearchOpen(true)}
+            onBlur={() => setTimeout(() => setSearchOpen(false), 150)}
+          />
+          {query && <button className="clear-search" aria-label="Clear search" onClick={() => setQuery('')}><X /></button>}
+          {searchOpen && searchMatches.length > 0 && (
+            <div className="search-results">
+              {searchMatches.map((item) => (
+                <button key={item.id} onMouseDown={() => { selectCounty(item.id); setQuery(''); setSearchOpen(false); }}>
+                  <MapPin /><span><strong>{item.name}, {item.state}</strong><small>County FIPS {item.id}</small></span><ChevronRight />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className={`source-pill ${sample ? 'sample' : ''}`}><span />{busy ? 'Loading universe' : sample ? 'Sample data' : `${filtered.length.toLocaleString()} counties`}</div>
+        <button className="mobile-menu icon-button" aria-label="Open explorer" onClick={() => setDrawer('explore')}><Menu /></button>
+      </header>
+
+      <section className="map-experience" aria-label="County health explorer">
+        <div className="hero-copy">
+          <p className="eyebrow"><Sparkles /> Community health atlas</p>
+          <h1>Health, mapped<br />closer to home.</h1>
+          <p>Move across the map to reveal the eight signals shaping every county.</p>
+        </div>
+
+        {error ? (
+          <div className="center-message error-message" role="alert"><ShieldOff /><h2>We could not load the map</h2><p>{error}</p><button onClick={() => fileInput.current?.click()}>Choose a CSV</button></div>
+        ) : busy ? (
+          <div className="center-message loading-message" role="status"><Activity /><p>Mapping community health…</p></div>
+        ) : (
+          <CountyMap counties={filtered} selected={selected?.id} onSelect={selectCounty} onHover={handleHover} metric={metric} />
+        )}
+
+        <div className="metric-dock" aria-label="Choose health indicator">
+          {PRIMARY.map((code) => {
+            const Icon = ICONS[code];
+            return <button key={code} className={metric === code ? 'active' : ''} onClick={() => setMetric(code)} aria-pressed={metric === code} title={METRICS[code]}><Icon /><span>{METRICS[code]}</span></button>;
+          })}
+        </div>
+
+        <div className="map-legend">
+          <div><span>Lower</span><i /><span>Higher</span></div>
+          <p>{formatValue(low)} <strong>{METRICS[metric]}</strong> {formatValue(high)}</p>
+        </div>
+
+        <p className="map-instruction"><span className="mouse-dot" /> Hover to preview <span /> Click to explore</p>
+      </section>
+
+      <nav className="floating-nav" aria-label="Explorer tools">
+        {navItems.map(([Icon, label, id]) => <button key={id} className={drawer === id ? 'active' : ''} onClick={() => setDrawer(drawer === id ? '' : id)}><Icon /><span>{label}</span></button>)}
+      </nav>
+
+      {hoveredCounty && (
+        <article className="hover-card" style={{ left: hoverCard.left, top: hoverCard.top }}>
+          <header><div><p>{hoveredCounty.state} · FIPS {hoveredCounty.id}</p><h2>{hoveredCounty.name}</h2></div><span className="live-dot" /></header>
+          <div className="hover-feature"><span>{METRICS[metric]}</span><strong>{formatValue(hoveredCounty.metrics[metric]?.value)}</strong><small>95% confidence interval · {confidence(hoveredCounty.metrics[metric])}</small></div>
+          <MetricRows county={hoveredCounty} compact />
+          <p className="hover-hint">Click county to pin full details <ChevronRight /></p>
+        </article>
+      )}
+
+      <Drawer open={drawer === 'details'} title={selected ? `${selected.name}, ${selected.state}` : 'County details'} eyebrow={selected ? `County FIPS ${selected.id}` : 'County snapshot'} onClose={() => setDrawer('')}>
+        {selected && <>
+          <div className="featured-reading"><span>{METRICS[metric]}</span><strong>{formatValue(selected.metrics[metric]?.value)}</strong><small>95% confidence interval · {confidence(selected.metrics[metric])}</small></div>
+          <MetricRows county={selected} />
+          <button className="primary-button" onClick={() => { setOther(compared?.id); setDrawer('compare'); }}><ArrowRightLeft /> Compare this county</button>
+        </>}
+      </Drawer>
+
+      <Drawer open={drawer === 'explore'} title="Explore counties" eyebrow={`${filtered.length.toLocaleString()} matches`} onClose={() => setDrawer('')} wide>
+        <div className="filter-grid">
+          <label className="field field-wide"><span>Search</span><div className="input-with-icon"><Search /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="County, state, or FIPS" /></div></label>
+          <label className="field"><span>State</span><select value={state} onChange={(event) => setState(event.target.value)}><option>All states</option>{states.map((item) => <option key={item}>{item}</option>)}</select></label>
+          <label className="field"><span>Sort</span><select value={sortOrder} onChange={(event) => setSortOrder(event.target.value)}><option value="none">County name</option><option value="highest">Highest value</option><option value="lowest">Lowest value</option><option value="ci-widest">Widest interval</option><option value="ci-narrowest">Narrowest interval</option></select></label>
+          <label className="field"><span>Minimum %</span><input type="number" min="0" max="100" value={minValue} onChange={(event) => setMinValue(event.target.value)} placeholder="0" /></label>
+          <label className="field"><span>Maximum %</span><input type="number" min="0" max="100" value={maxValue} onChange={(event) => setMaxValue(event.target.value)} placeholder="100" /></label>
+          <label className="check-field"><input type="checkbox" checked={hideMissing} onChange={(event) => setHideMissing(event.target.checked)} /><span className="fake-check">{hideMissing && <Check />}</span>Hide missing data</label>
+        </div>
+        <div className="county-results">
+          {filtered.slice(0, 150).map((item) => <button key={item.id} onClick={() => selectCounty(item.id)}><span><strong>{item.name}</strong><small>{item.state} · {item.id}</small></span><span className="result-value">{formatValue(item.metrics[metric]?.value)}</span><ChevronRight /></button>)}
+          {!filtered.length && <p className="empty-state">No counties match these filters.</p>}
+          {filtered.length > 150 && <p className="result-note">Showing the first 150 counties. Refine the filters to narrow the list.</p>}
+        </div>
+      </Drawer>
+
+      <Drawer open={drawer === 'compare'} title="Compare communities" eyebrow={`${year} · ${type}`} onClose={() => setDrawer('')} wide>
+        <div className="compare-pickers"><CountyPicker label="County A · Cyan" value={selected?.id} counties={counties} onChange={setCounty} /><CountyPicker label="County B · Violet" value={compared?.id} counties={counties} onChange={setOther} /></div>
+        <div className="comparison-chart">
+          {PRIMARY.map((code) => (
+            <div className="comparison-row" key={code}>
+              <span>{METRICS[code]}</span>
+              {[selected, compared].map((item, index) => {
+                const row = item?.metrics[code];
+                return <div className={`compare-value ${index ? 'violet' : ''}`} key={index}><strong>{formatValue(row?.value)}</strong><div className="bar-track"><i style={{ width: `${row?.value ?? 0}%` }} /></div><small>{confidence(row)}</small></div>;
+              })}
+            </div>
+          ))}
+        </div>
+      </Drawer>
+
+      <Drawer open={drawer === 'data'} title="About the data" eyebrow={source ? `Source · ${source}` : 'Data & methodology'} onClose={() => setDrawer('')}>
+        <div className="data-controls">
+          <label className="field"><span>Observation year</span><select value={year} onChange={(event) => setYear(event.target.value)}>{years.map((item) => <option key={item}>{item}</option>)}</select></label>
+          <label className="field"><span>Estimate type</span><select value={type} onChange={(event) => setType(event.target.value)}>{types.map((item) => <option key={item}>{item}</option>)}</select></label>
+          <button className="upload-button" onClick={() => fileInput.current?.click()} disabled={busy}><FileUp /> Open CDC CSV</button>
+        </div>
+        {sample && <p className="data-callout">The bundled sample uses fictional values for interface demonstration.</p>}
+        <div className="prose"><h3>What you are seeing</h3><p>CDC PLACES provides modeled county estimates rather than individual medical records. Confidence intervals communicate the uncertainty around every estimate; similar or overlapping intervals should not be treated as proof of a meaningful difference.</p><h3>Known gaps</h3><p>Missing values remain unavailable rather than being treated as zero. Kentucky, Pennsylvania, and some low-population counties may have gaps in this release because the source survey did not provide a reliable estimate.</p><h3>Boundaries</h3><p>Map boundaries come from us-atlas and are derived from U.S. Census cartographic boundaries. Boundary vintages can differ from the health dataset.</p><a href="https://data.cdc.gov/500-Cities-Places/PLACES-Local-Data-for-Better-Health-County-Data-20/swc5-untb" target="_blank" rel="noreferrer">Visit the CDC PLACES dataset <ChevronRight /></a></div>
+      </Drawer>
+
+      <input ref={fileInput} hidden type="file" accept=".csv,text/csv" onChange={upload} />
+      <button className="filter-fab" onClick={() => setDrawer('explore')} aria-label="Open filters"><SlidersHorizontal />{(state !== 'All states' || minValue || maxValue || hideMissing) && <span />}</button>
+      {!busy && !error && !counties.length && <div className="center-message" role="status"><BarChart3 /><p>No observations match this year and estimate type.</p></div>}
     </main>
-  </div>;
+  );
 }

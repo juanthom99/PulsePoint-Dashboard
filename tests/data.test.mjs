@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseCSV, formatValue } from '../lib/data.mjs';
+import { metricColor, clampFloatingPanel } from '../lib/map-utils.mjs';
 test('sample values stay labeled and leading zero FIPS is retained',()=>{
   const rows=parseCSV('county_fips,county_name,state_abbr,measure_code,year,value,is_sample\n06037,Los Angeles County,CA,OBESITY,2023,29.8,true');
   assert.equal(rows.length,1); assert.ok(rows.every(r=>r.is_sample));
@@ -27,4 +28,14 @@ test('duplicate and incompatible files fail clearly',()=>{
   const row='01001,Autauga,AL,OBESITY,2023,25';
   assert.throws(()=>parseCSV(header+row+'\n'+row),/Duplicate/);
   assert.throws(()=>parseCSV('hello,world\none,two'),/No supported/);
+});
+test('map colors handle missing, flat and clamped values',()=>{
+  assert.equal(metricColor(null,10,20),'#101c31');
+  assert.equal(metricColor(15,10,20),'hsl(219.0 82% 58.0%)');
+  assert.equal(metricColor(50,10,20),metricColor(20,10,20));
+  assert.equal(metricColor(10,10,10),'hsl(219.0 82% 58.0%)');
+});
+test('floating panels stay on screen and move below the pointer near the top',()=>{
+  assert.deepEqual(clampFloatingPanel(10,10,1200,800,330,350),{left:16,top:34});
+  assert.deepEqual(clampFloatingPanel(1190,790,1200,800,330,350),{left:854,top:416});
 });

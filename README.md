@@ -1,6 +1,6 @@
 # PulsePoint
 
-PulsePoint is a community health dashboard that lets you explore chronic disease and health behavior patterns across counties in the United States. Instead of reading through raw spreadsheets, you can select a county, see its rates across eight health indicators, view a colored map comparing counties nationwide, and place two counties side by side to see how they compare.
+PulsePoint is an interactive community health atlas for exploring chronic disease and health behavior patterns across counties in the United States. Move across the map for an eight-indicator preview, pin a county for its full snapshot, filter the visible geography, or compare two communities side by side.
 
 ## Purpose
 
