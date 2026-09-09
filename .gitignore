@@ -5,3 +5,5 @@
 data/*.csv
 !data/README.md
 .DS_Store
+AGENTS.md
+CLAUDE.md
