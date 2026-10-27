@@ -4,7 +4,7 @@ PulsePoint is an interactive community health atlas for exploring chronic diseas
 
 **[Explore the live atlas →](https://pulse-point-dashboard.vercel.app/)**
 
-The public demo uses a bundled CDC snapshot with **2,956 counties and 23,648 observations across eight indicators**. It does not require an account, database credentials, or an API key.
+The public demo connects to Supabase and includes a CDC snapshot with **2,956 counties and 23,648 observations across eight indicators** for temporary database outages. Visitors do not need an account or an API key.
 
 ## Purpose
 
@@ -32,7 +32,7 @@ A few honest limitations are worth stating plainly rather than hiding.
 
 ## Tech stack
 
-Built with Next.js, React, SVG county geometry, and shadcn-style components, deployed on Vercel. The public atlas reads a versioned CDC CSV bundled with the app. Supabase is optional; an unavailable or empty database falls back to that same real snapshot.
+Built with Next.js, React, SVG county geometry, and shadcn-style components, deployed on Vercel. Configured deployments read the public county table from Supabase. An unavailable or empty database falls back to the versioned CDC snapshot, with the active source shown in About data.
 
 ## Running locally
 
@@ -49,6 +49,6 @@ npm run prepare:csv -- path/to/your/download.csv
 
 This regenerates `public/data/places.csv`, which the dashboard reads directly, or which can be imported into a Supabase table using the schema in `supabase/schema.sql`.
 
-For optional Supabase loading, set `NEXT_PUBLIC_DATA_SOURCE=supabase` and both public connection values in `.env.example`. Without explicit opt-in, the atlas uses the bundled snapshot even if older deployment credentials are present. Never put a service-role key in frontend configuration.
+For Supabase loading, set both public connection values in `.env.example`. Set `NEXT_PUBLIC_DATA_SOURCE=csv` only to explicitly use the offline snapshot; otherwise a configured database is preferred. Never put a service-role key in frontend configuration.
 
 Run `npm test` to verify CSV parsing, snapshot coverage, map helpers, and database-failure fallback. Run `npm run build` for a production build.

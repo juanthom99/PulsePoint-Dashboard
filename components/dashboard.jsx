@@ -104,7 +104,7 @@ export default function Dashboard() {
         const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
         const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
         const result = await loadObservations({
-          preferRemote: process.env.NEXT_PUBLIC_DATA_SOURCE === 'supabase',
+          preferRemote: process.env.NEXT_PUBLIC_DATA_SOURCE !== 'csv' && Boolean(url && key),
           loadRemote: async () => {
             if (!url || !key) throw new Error('Remote configuration is incomplete.');
             const { createClient } = await import('@supabase/supabase-js');
