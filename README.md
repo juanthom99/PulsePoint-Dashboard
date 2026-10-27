@@ -1,54 +1,114 @@
 # PulsePoint
 
-PulsePoint is an interactive community health atlas for exploring chronic disease and health behavior patterns across counties in the United States. Move across the map for an eight-indicator preview, pin a county for its full snapshot, filter the visible geography, or compare two communities side by side.
+### Community health, mapped closer to home.
 
-**[Explore the live atlas →](https://pulse-point-dashboard.vercel.app/)**
+Explore eight public health indicators across U.S. counties through an interactive atlas, county snapshots, searchable filters, and side-by-side comparisons.
 
-The public demo connects to Supabase and includes a CDC snapshot with **2,956 counties and 23,648 observations across eight indicators** for temporary database outages. Visitors do not need an account or an API key.
+**[Launch the live atlas →](https://pulse-point-dashboard.vercel.app/)** · [Source code](https://github.com/juanthom99/PulsePoint-Dashboard) · [CDC PLACES data](https://data.cdc.gov/500-Cities-Places/PLACES-Local-Data-for-Better-Health-County-Data-20/swc5-untb)
 
-## Purpose
+The included dataset contains **2,956 counties and 23,648 observations**, with eight indicators per county, labeled **2023**. These are historical, modeled estimates—not real-time health readings. The app shows the active year, estimate type, and data source in **About data**. No visitor account is required.
 
-Public health data is often locked away in large government datasets that are hard for most people to actually use. PulsePoint exists to make that data approachable: a resident curious about their own county, a student studying public health, or someone deciding where to focus attention or resources can look at the numbers without needing to process a raw CSV file themselves.
+[![PulsePoint county health atlas](docs/screenshots/atlas-desktop.png)](https://pulse-point-dashboard.vercel.app/)
 
-The eight indicators covered are obesity, diabetes, high blood pressure, physical inactivity, current smoking, depression, frequent mental distress, and lack of health insurance.
+## Explore the atlas
 
-## Data source
+- Select an indicator to recolor the county map. Hover for an eight-indicator preview or select a county to pin its details.
+- Search by county, state, or five-digit FIPS identifier. Explore counties with state, value, missing-data, and sorting controls.
+- Open **Compare** to examine two counties, including each estimate's 95% confidence interval.
+- Open **About data** for the observation year, source, uncertainty, and coverage notes. On a phone, use search or the county list to select small counties.
+- Import a compatible CDC CSV to explore another dataset locally in the browser. Importing a file does not write it to Supabase.
 
-All figures come from the CDC's PLACES dataset (Population Level Analysis and Community Estimates). PLACES does not survey every resident directly. Instead, it combines results from the Behavioral Risk Factor Surveillance System, an annual phone survey, with census demographic data, then applies a statistical model to produce a modeled estimate for each county, including many counties too small to have collected a large number of individual survey responses on their own.
+## Indicators at a glance
 
-Because of that, every number here is an estimate with an associated confidence interval, not a census or a medical record.
+Values are estimated percentages. Most measures cover adults aged 18 or older; the health-insurance measure covers ages 18–64. Exact definitions and survey questions are maintained by [CDC PLACES](https://www.cdc.gov/places/measure-definitions/index.html).
 
-## Limitations
+| Indicator | What it describes |
+| --- | --- |
+| Obesity | Adults whose reported height and weight meet the obesity threshold |
+| Diabetes | Adults reporting a diabetes diagnosis, excluding gestational diabetes |
+| Physical inactivity | Adults reporting no leisure-time physical activity in the past month |
+| Frequent mental distress | Adults reporting at least 14 days of poor mental health in the past month |
+| High blood pressure | Adults reporting a high blood pressure diagnosis |
+| Current smoking | Adults meeting CDC's current cigarette-smoking definition |
+| Depression | Adults reporting a depression diagnosis |
+| Lack of health insurance | Adults aged 18–64 reporting no current health insurance |
 
-A few honest limitations are worth stating plainly rather than hiding.
+## Read the numbers responsibly
 
-**Kentucky and Pennsylvania are missing** from several indicators in this release. This is not an error in the app. Per CDC's own release notes, these two states did not have usable BRFSS data for measures based on the 2023 survey year, so no estimate exists to display.
+**Historical estimates.** PLACES combines survey and demographic information to model small-area prevalence. Connecting to Supabase retrieves the stored dataset; it does not update the observation period. The included eight measures use 2023 survey data in the CDC release described in the [release notes](https://www.cdc.gov/places/current-release-notes/index.html).
 
-**Some individual counties are also missing values**, usually because their population was too small for the underlying survey to produce a reliable estimate. CDC suppresses these rather than publish an unreliable number, and PulsePoint follows the same approach: missing data is shown as unavailable, never treated as zero or filled in with a guess.
+**Uncertainty.** A 95% confidence interval communicates uncertainty around a modeled estimate. Point estimates and interval overlap alone are not a formal test of a difference. County summaries do not describe an individual resident or establish causation.
 
-**Confidence intervals vary widely by county size.** Large counties tend to show tight intervals because more survey respondents contribute to their estimate. Small or rural counties can show intervals spanning ten or more percentage points. When comparing two counties, an overlapping interval means the difference between them may not be statistically meaningful, even if the point estimates look different.
+**Coverage.** Kentucky and Pennsylvania lack estimates for 2023 BRFSS-based measures in this release. Missing values remain unavailable, never zero or invented data. The app does not infer why an individual county is absent. County boundaries use `us-atlas`, derived from U.S. Census cartographic boundaries, and can differ from the health dataset's boundary vintage.
 
-**There is intentionally no overall health score or ranking.** Combining eight separate indicators into a single number requires deciding how much weight to give each one, and that decision has no objectively correct answer. A single score would also hide the uncertainty described above and could unfairly penalize places with missing data. PulsePoint shows each indicator on its own rather than collapsing them into a composite score or a best or worst ranking.
+**Comparison.** The bundled snapshot contains crude prevalence. Compare the same measure, year, and estimate type. Crude prevalence does not adjust away differences in county age distributions. No composite health score or overall ranking is calculated.
 
-## Tech stack
+## Screenshots
 
-Built with Next.js, React, SVG county geometry, and shadcn-style components, deployed on Vercel. Configured deployments read the public county table from Supabase. An unavailable or empty database falls back to the versioned CDC snapshot, with the active source shown in About data.
+### County comparison
 
-## Running locally
+![Side-by-side county indicators and confidence intervals](docs/screenshots/compare-desktop.png)
 
+### Phone layout
+
+<img src="docs/screenshots/atlas-mobile.png" alt="PulsePoint at a 390-pixel phone viewport, with search, indicators, Compare, and About data" width="320">
+
+Screenshots show the application itself, rather than design mockups.
+
+## Architecture
+
+```text
+GitHub main → Vercel → Next.js / React interface
+                         ├─ Supabase public county observations (preferred)
+                         └─ Bundled CDC CSV (outage fallback)
 ```
+
+The interface uses Tailwind CSS, Lucide icons, SVG county geometry, and a customized **shadcn/ui Card** in the About data panel. Configuration lives in `components.json`; attribution is in [THIRD_PARTY.md](THIRD_PARTY.md).
+
+Supabase reads are paginated to include the full table. An unavailable or empty database falls back to the bundled snapshot; **About data** identifies the active source. Public table access is read-only under row-level security. The schema and import instructions are included in the repository.
+
+## Run locally
+
+Requires Node.js 20.9 or later.
+
+```bash
 npm ci
+# Copy .env.example to .env.local and fill in the public Supabase values.
 npm run dev
 ```
 
-To refresh the bundled dataset, download the PLACES County Data CSV from data.cdc.gov and run:
+Open `http://localhost:3000`. With both public connection values configured, Supabase is preferred. Set `NEXT_PUBLIC_DATA_SOURCE=csv` to explicitly use the bundled snapshot. Never put a service-role key in frontend configuration.
 
+For a new Supabase project, run [supabase/schema.sql](supabase/schema.sql) in its SQL editor and import `public/data/places.csv` into `pulsepoint_observations`. Configure `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` in Vercel, then redeploy. Keep the GitHub repository connected to the Vercel project so pushes to `main` deploy the app.
+
+```bash
+npm test
+npm run build
+npm start
 ```
-npm run prepare:csv -- path/to/your/download.csv
+
+The tests cover CSV parsing, five-digit FIPS preservation, missing values, duplicate rejection, map helpers, snapshot coverage, and database-outage behavior.
+
+## Refresh the snapshot
+
+Download a compatible PLACES county CSV, then run:
+
+```bash
+npm run prepare:csv -- path/to/download.csv
 ```
 
-This regenerates `public/data/places.csv`, which the dashboard reads directly, or which can be imported into a Supabase table using the schema in `supabase/schema.sql`.
+Review years, estimate types, coverage, and any changed definitions before publishing. Long-format CSVs preserve their year field. GIS-friendly wide files do not carry a per-measure year; the current parser assigns 2023, so adapting it is necessary before importing a different survey vintage. The command regenerates `public/data/places.csv`; import the reviewed file into Supabase separately to update the hosted table.
 
-For Supabase loading, set both public connection values in `.env.example`. Set `NEXT_PUBLIC_DATA_SOURCE=csv` only to explicitly use the offline snapshot; otherwise a configured database is preferred. Never put a service-role key in frontend configuration.
+## Repository guide
 
-Run `npm test` to verify CSV parsing, snapshot coverage, map helpers, and database-failure fallback. Run `npm run build` for a production build.
+| Path | Purpose |
+| --- | --- |
+| `components/dashboard.jsx` | Search, filters, county details, comparison, and data explanations |
+| `components/county-map.jsx` | Interactive county geometry |
+| `components/ui/card.jsx` | Customized shadcn/ui Card primitive |
+| `lib/data.mjs` | CDC CSV normalization and indicator labels |
+| `lib/load-data.mjs` | Database and snapshot loading strategy |
+| `public/data/places.csv` | Versioned public-data snapshot |
+| `supabase/schema.sql` | Table, constraints, and public read policy |
+| `tests/` | Data and map behavior checks |
+| `docs/screenshots/` | Captured desktop and phone views |

@@ -10,6 +10,7 @@ import { CountyMap } from '@/components/county-map';
 import { METRICS, parseCSV, formatValue } from '@/lib/data.mjs';
 import { clampFloatingPanel } from '@/lib/map-utils.mjs';
 import { loadObservations } from '@/lib/load-data.mjs';
+import { Card, CardContent } from '@/components/ui/card';
 
 const PRIMARY = ['OBESITY', 'DIABETES', 'LPA', 'MHLTH', 'BPHIGH', 'CSMOKING', 'DEPRESSION', 'ACCESS2'];
 const ICONS = { OBESITY: Users, DIABETES: Droplets, LPA: Footprints, MHLTH: Brain, BPHIGH: Heart, CSMOKING: Cigarette, DEPRESSION: Frown, ACCESS2: ShieldOff };
@@ -293,8 +294,8 @@ export default function Dashboard() {
 
       <section className="map-experience" aria-label="County health explorer">
         <div className="hero-copy">
-          <p className="eyebrow"><Sparkles /> Community health atlas</p>
-          <h1>Health, mapped<br />closer to home.</h1>
+          <p className="eyebrow"><Sparkles /> Community health atlas{year && ` · ${year} estimates`}</p>
+          <h1>Health, mapped<br />{' '}closer to home.</h1>
           <p>Move across the map to reveal the eight signals shaping every county.</p>
         </div>
 
@@ -383,7 +384,8 @@ export default function Dashboard() {
           <button className="upload-button" onClick={() => fileInput.current?.click()} disabled={busy}><FileUp /> Open CDC CSV</button>
         </div>
         {sample && <p className="data-callout">The bundled sample uses fictional values for interface demonstration.</p>}
-        <div className="prose"><h3>What you are seeing</h3><p>CDC PLACES provides modeled county estimates rather than individual medical records. Confidence intervals communicate the uncertainty around every estimate; similar or overlapping intervals should not be treated as proof of a meaningful difference.</p><h3>Known gaps</h3><p>Missing values remain unavailable rather than being treated as zero. Kentucky, Pennsylvania, and some low-population counties may have gaps in this release because the source survey did not provide a reliable estimate.</p><h3>Boundaries</h3><p>Map boundaries come from us-atlas and are derived from U.S. Census cartographic boundaries. Boundary vintages can differ from the health dataset.</p><a href="https://data.cdc.gov/500-Cities-Places/PLACES-Local-Data-for-Better-Health-County-Data-20/swc5-untb" target="_blank" rel="noreferrer">Visit the CDC PLACES dataset <ChevronRight /></a></div>
+        <Card className="data-summary"><CardContent className="data-summary-content"><strong>{year} estimates · historical snapshot</strong><p>These modeled percentages describe a past survey period. A working database connection does not make them live health readings.</p><p>{counties.length.toLocaleString()} counties · eight indicators · {type.toLowerCase()}</p></CardContent></Card>
+        <div className="prose"><h3>What the indicators mean</h3><p>Each value is an estimated percentage for obesity, diagnosed diabetes, physical inactivity, frequent mental distress, diagnosed high blood pressure, current smoking, diagnosed depression, or lack of health insurance. Most measures cover adults aged 18 or older; insurance covers ages 18–64. Definitions and survey periods follow CDC PLACES.</p><h3>Read the uncertainty</h3><p>The 95% confidence interval shows uncertainty around a modeled estimate. Point estimates and interval overlap alone do not establish a statistically significant difference. These county summaries do not describe an individual resident or establish a cause.</p><h3>Known gaps</h3><p>Missing values remain unavailable, never zero or an invented estimate. Kentucky and Pennsylvania lack estimates for measures based on the 2023 BRFSS in this release. Other gaps can reflect source coverage or boundary differences; the app does not infer a reason for an individual missing county.</p><h3>Boundaries</h3><p>Map boundaries come from us-atlas and are derived from U.S. Census cartographic boundaries. Boundary vintages can differ from the health dataset. There is no composite health score or overall ranking.</p><a href="https://data.cdc.gov/500-Cities-Places/PLACES-Local-Data-for-Better-Health-County-Data-20/swc5-untb" target="_blank" rel="noreferrer">Visit the CDC PLACES dataset <ChevronRight /></a><a href="https://www.cdc.gov/places/current-release-notes/index.html" target="_blank" rel="noreferrer">Read CDC release notes <ChevronRight /></a></div>
       </Drawer>
 
       <input ref={fileInput} hidden type="file" accept=".csv,text/csv" onChange={upload} />

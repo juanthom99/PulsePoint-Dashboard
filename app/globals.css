@@ -242,6 +242,10 @@ svg { flex-shrink: 0; }
 
 .data-controls { display: grid; gap: 13px; padding-bottom: 20px; border-bottom: 1px solid var(--line); }
 .data-callout { margin: 18px 0; padding: 12px 14px; border: 1px solid rgba(169,130,255,.25); border-radius: 11px; color: #ccb9ef; background: rgba(169,130,255,.07); font-size: .74rem; }
+.data-summary { gap: 0; margin-top: 18px; border-color: rgba(67,232,255,.25); background: rgba(67,232,255,.055); color: #aab8ca; }
+.data-summary-content { padding: 15px; font-size: .76rem; line-height: 1.7; }
+.data-summary strong { display: block; color: var(--cyan); }
+.data-summary p { margin-top: 8px; }
 .prose { color: #aab8ca; font-size: .79rem; line-height: 1.72; }
 .prose h3 { margin: 22px 0 5px; color: var(--ink); font-size: .88rem; }
 .prose a { display: flex; align-items: center; gap: 4px; margin-top: 22px; color: var(--cyan); font-weight: 700; }
@@ -278,12 +282,16 @@ svg { flex-shrink: 0; }
   .hero-copy h1 { font-size: clamp(2rem, 10vw, 3.3rem); }
   .hero-copy h1 br { display: none; }
   .hero-copy > p:last-child { display: none; }
-  .map-stage { top: 16vh; right: -20vw; width: 140vw; height: 69vh; }
+  .map-stage { top: 24vh; right: 8px; width: calc(100vw - 16px); height: 50vh; }
   .county-map { max-height: 64vh; transform: translate3d(0, 0, 0); }
   .metric-dock { left: 12px; right: 12px; bottom: 18px; max-width: none; overflow-x: auto; transform: none; justify-content: flex-start; scrollbar-width: none; }
   .metric-dock button { min-width: 42px; padding: 0 11px; }
   .metric-dock button.active span { display: none; }
-  .map-instruction, .floating-nav { display: none; }
+  .map-instruction { display: none; }
+  .floating-nav { top: auto; bottom: 90px; left: 50%; display: flex; gap: 8px; transform: translateX(-50%); }
+  .floating-nav button, .floating-nav button:hover, .floating-nav button:focus-visible { width: auto; min-height: 44px; gap: 8px; padding: 0 13px; }
+  .floating-nav span { max-width: none; opacity: 1; }
+  .floating-nav button:hover span, .floating-nav button:focus-visible span { max-width: none; margin-left: 0; }
   .hover-card { display: none; }
   .drawer { top: auto; left: 8px; right: 8px; bottom: 8px; width: auto; max-height: 82dvh; border-radius: 23px; animation-name: sheet-in; }
   .drawer-wide { width: auto; }
