@@ -2,6 +2,10 @@
 
 PulsePoint is an interactive community health atlas for exploring chronic disease and health behavior patterns across counties in the United States. Move across the map for an eight-indicator preview, pin a county for its full snapshot, filter the visible geography, or compare two communities side by side.
 
+**[Explore the live atlas →](https://pulse-point-dashboard.vercel.app/)**
+
+The public demo uses a bundled CDC snapshot with **2,956 counties and 23,648 observations across eight indicators**. It does not require an account, database credentials, or an API key.
+
 ## Purpose
 
 Public health data is often locked away in large government datasets that are hard for most people to actually use. PulsePoint exists to make that data approachable: a resident curious about their own county, a student studying public health, or someone deciding where to focus attention or resources can look at the numbers without needing to process a raw CSV file themselves.
@@ -28,19 +32,23 @@ A few honest limitations are worth stating plainly rather than hiding.
 
 ## Tech stack
 
-Built with Next.js and Shadcn style components, with county data stored in Supabase and the site deployed on Vercel.
+Built with Next.js, React, SVG county geometry, and shadcn-style components, deployed on Vercel. The public atlas reads a versioned CDC CSV bundled with the app. Supabase is optional; an unavailable or empty database falls back to that same real snapshot.
 
 ## Running locally
 
 ```
-npm install
+npm ci
 npm run dev
 ```
 
-To load your own copy of the CDC data instead of the bundled sample, download the PLACES County Data CSV from data.cdc.gov and run:
+To refresh the bundled dataset, download the PLACES County Data CSV from data.cdc.gov and run:
 
 ```
 npm run prepare:csv -- path/to/your/download.csv
 ```
 
 This regenerates `public/data/places.csv`, which the dashboard reads directly, or which can be imported into a Supabase table using the schema in `supabase/schema.sql`.
+
+For optional Supabase loading, set `NEXT_PUBLIC_DATA_SOURCE=supabase` and both public connection values in `.env.example`. Without explicit opt-in, the atlas uses the bundled snapshot even if older deployment credentials are present. Never put a service-role key in frontend configuration.
+
+Run `npm test` to verify CSV parsing, snapshot coverage, map helpers, and database-failure fallback. Run `npm run build` for a production build.

@@ -9,6 +9,7 @@ import {
 import { CountyMap } from '@/components/county-map';
 import { METRICS, parseCSV, formatValue } from '@/lib/data.mjs';
 import { clampFloatingPanel } from '@/lib/map-utils.mjs';
+import { loadObservations } from '@/lib/load-data.mjs';
 
 const PRIMARY = ['OBESITY', 'DIABETES', 'LPA', 'MHLTH', 'BPHIGH', 'CSMOKING', 'DEPRESSION', 'ACCESS2'];
 const ICONS = { OBESITY: Users, DIABETES: Droplets, LPA: Footprints, MHLTH: Brain, BPHIGH: Heart, CSMOKING: Cigarette, DEPRESSION: Frown, ACCESS2: ShieldOff };
@@ -102,24 +103,32 @@ export default function Dashboard() {
       try {
         const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
         const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-        if (Boolean(url) !== Boolean(key)) throw new Error('Set both Supabase environment variables, or leave both blank to use CSV.');
-        if (url && key) {
-          const { createClient } = await import('@supabase/supabase-js');
-          const db = createClient(url, key);
-          const all = [];
-          for (let start = 0; ; start += 1000) {
-            const { data, error: dbError } = await db.from('pulsepoint_observations').select('*').order('county_fips').order('measure_code').order('year').order('data_value_type').range(start, start + 999);
-            if (dbError) throw new Error('Supabase could not load data. Check the schema, public SELECT policy and publishable key.');
-            all.push(...data);
-            if (data.length < 1000) break;
-          }
-          if (active) accept(all, 'Supabase');
-        } else {
-          const response = await fetch('/data/places.csv');
-          if (!response.ok) throw new Error('Could not find public/data/places.csv.');
-          const data = parseCSV(await response.text());
-          if (active) accept(data, 'Local CSV');
-        }
+        const result = await loadObservations({
+          preferRemote: process.env.NEXT_PUBLIC_DATA_SOURCE === 'supabase',
+          loadRemote: async () => {
+            if (!url || !key) throw new Error('Remote configuration is incomplete.');
+            const { createClient } = await import('@supabase/supabase-js');
+            const db = createClient(url, key, {
+              global: {
+                fetch: (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(5000) }),
+              },
+            });
+            const all = [];
+            for (let start = 0; ; start += 1000) {
+              const { data, error: dbError } = await db.from('pulsepoint_observations').select('*').order('county_fips').order('measure_code').order('year').order('data_value_type').range(start, start + 999);
+              if (dbError) throw new Error('The remote dataset is unavailable.');
+              all.push(...data);
+              if (data.length < 1000) break;
+            }
+            return all;
+          },
+          loadSnapshot: async () => {
+            const response = await fetch('/data/places.csv');
+            if (!response.ok) throw new Error('The county dataset is temporarily unavailable. Please reload or open a CDC CSV.');
+            return parseCSV(await response.text());
+          },
+        });
+        if (active) accept(result.rows, result.source);
       } catch (loadError) {
         if (active) setError(loadError.message);
       } finally {
